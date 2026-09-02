@@ -1,6 +1,12 @@
 # macOS
 .DS_Store
 
+# Signing material — never commit
+*.p12
+*.p8
+*_DO_NOT_COMMIT
+AuthKey_*
+
 # Xcode — user-specific state
 xcuserdata/
 *.xcuserstate
