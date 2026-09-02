@@ -1,24 +1,27 @@
 #! Homebrew cask template. `Tools/release.sh` fills in the version and checksum
-#! and writes the result to build/release/daily-log.rb; copy that into
-#! AlbinAxtelius/homebrew-tap as Casks/daily-log.rb. Lines starting with `#!`
-#! are template-only notes and are stripped from the rendered cask.
+#! and writes the result to build/release/daily-log.rb; CI then pushes that into
+#! elva-labs/homebrew-elva as Casks/daily-log.rb. Lines starting with `#!` are
+#! template-only notes and are stripped from the rendered cask.
 #
-# The app is ad-hoc signed, not notarized, so install it with quarantine off:
+# The app is Developer ID signed and notarized, so it installs like any other
+# cask — no `--no-quarantine`, no Gatekeeper prompt:
 #
-#     brew tap albinaxtelius/tap
-#     brew install --cask --no-quarantine daily-log
-#
-# Put `HOMEBREW_CASK_OPTS="--no-quarantine"` in your shell profile so
-# `brew upgrade` does not re-quarantine it later.
+#     brew tap elva-labs/elva
+#     brew install --cask daily-log
 
 cask "daily-log" do
   version "@VERSION@"
   sha256 "@SHA256@"
 
-  url "https://github.com/AlbinAxtelius/daily_log/releases/download/v#{version}/daily_log-#{version}.zip"
+  url "https://github.com/elva-labs/daily_log/releases/download/v#{version}/daily_log-#{version}.zip"
   name "daily_log"
   desc "Menu-bar agent that nudges you to log what you are doing"
-  homepage "https://github.com/AlbinAxtelius/daily_log"
+  homepage "https://github.com/elva-labs/daily_log"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
 
   # A bare symbol means "this version or newer". The `">= :tahoe"` string form
   # is deprecated.
@@ -31,5 +34,8 @@ cask "daily-log" do
   uninstall launchctl: "se.axtelius.daily-log",
             quit:      "se.axtelius.daily-log"
 
-  zap trash: "~/Library/Application Support/daily"
+  zap trash: [
+    "~/Library/Application Support/daily",
+    "~/Library/Preferences/se.axtelius.daily-log.plist",
+  ]
 end

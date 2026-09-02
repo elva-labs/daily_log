@@ -13,8 +13,8 @@ and hands you a readable per-project rollup when Friday's timesheet is due.**
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ```sh
-brew tap albinaxtelius/tap
-brew install --cask --no-quarantine daily-log
+brew tap elva-labs/elva
+brew install --cask daily-log
 ```
 
 </div>
@@ -77,7 +77,8 @@ Plain JSON in `~/Library/Application Support/daily/` (overridable in settings):
 
 Native AppKit + SwiftUI, no dependencies. Requires **macOS 26.5** and **Xcode 26**.
 Open `daily_log.xcodeproj` and run — set your own team under Signing & Capabilities
-first, since the checked-in project deliberately has none.
+first, since the checked-in project deliberately has none. The release build gets
+its team and Developer ID identity from `Tools/release.sh`, not the project file.
 
 ```
 daily_log/
@@ -115,44 +116,56 @@ those against a built `.app`.
 
 CI runs the suite on every push and PR, then cuts a release *only* when
 `MARKETING_VERSION` names a version that has no matching release — so ordinary commits
-are silent, and no push can accidentally re-release a version. The zip and the rendered
-cask both land as release assets, and the cask is pushed to the tap, so the new version
-is installable without a manual step.
+are silent, and no push can accidentally re-release a version. The build is Developer ID
+signed and notarized; the zip and the rendered cask land as release assets, and the
+cask is pushed to `elva-labs/homebrew-elva`, so the new version is installable with no
+manual step.
 
 ```
 push to main
 ├── always ......................... run tests
-├── MARKETING_VERSION unreleased ... build → zip → publish v1.1 → update tap
+├── MARKETING_VERSION unreleased ... build → sign → notarize → staple → zip → publish v1.1 → push cask
 └── already released ............... stop, note it in the job summary
 ```
 
-The tap push needs `TAP_TOKEN`: a fine-grained PAT scoped to `homebrew-tap` alone with
-**Contents: read and write**. `GITHUB_TOKEN` cannot reach another repository, so there
-is no way around a second credential. Without the secret the release still ships intact
-and CI warns that the tap was left behind.
+The tap push needs `TAP_TOKEN`: a fine-grained PAT with **Contents: read and write** on
+`elva-labs/homebrew-elva` alone. `github.token` cannot reach another repository, so a
+second credential is unavoidable. Without it the release still ships and CI warns that
+the tap was left behind.
 
 `main` is protected: changes go through a PR, `test` must pass, and force-push and
 deletion are blocked.
 
 <details>
+<summary><strong>Signing secrets</strong> (elva-labs org secrets)</summary>
+
+All six live as **elva-labs organization secrets**, shared with this repo — no repo-level
+setup. With `MACOS_CERTIFICATE` and `NOTARY_KEY` both present the release is signed +
+notarized; missing either, it ships ad-hoc and CI warns.
+
+`MACOS_CERTIFICATE` · `MACOS_CERTIFICATE_PASSWORD` · `MACOS_SIGN_IDENTITY` ·
+`NOTARY_KEY` · `NOTARY_KEY_ID` · `NOTARY_ISSUER_ID`
+
+The signature is stable across builds, so macOS stops treating an upgrade as a new app
+and re-asking for notification permission.
+
+</details>
+
+<details>
 <summary><strong>Running a release by hand</strong></summary>
 
 `Tools/release.sh` is what CI invokes, and works standalone. It builds a Release,
-universal, ad-hoc-signed `.app`, zips it, and renders `build/release/daily-log.rb` from
+universal `.app`, zips it, and renders `build/release/daily-log.rb` from
 `Tools/daily-log.rb.tmpl`. Add `--publish` to cut the GitHub release and upload both
 assets. `SKIP_TESTS=1` skips the gating test run; `ALLOW_DIRTY=1` builds from a dirty
 tree.
 
+Signing is picked from the keychain: with a **Developer ID Application** identity
+present *and* `NOTARY_KEY_ID` / `NOTARY_ISSUER_ID` / `NOTARY_KEY_PATH` set, the app is
+Developer-ID signed with a hardened runtime, notarized by Apple, and stapled. Otherwise
+it falls back to ad-hoc — runnable, but not Gatekeeper-clean.
+
 </details>
-
-No Apple Developer account is involved. Ad-hoc signing is enough to *execute* the app; the
-Gatekeeper prompt comes from the quarantine xattr on the download, which `--no-quarantine`
-never attaches — set `HOMEBREW_CASK_OPTS="--no-quarantine"` in your shell profile so
-`brew upgrade` does not re-quarantine.
-
-> [!NOTE]
-> The cost of skipping notarization: the code signature changes every build, so macOS may
-> treat an upgrade as a different app and re-ask for notification permission.
 
 ## Tests
 
