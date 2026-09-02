@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build a distributable daily_log.app, zip it, and (with --publish) cut the
-# GitHub release. The Homebrew cask is NOT produced here: elva-labs/homebrew-elva
-# polls this repo's releases and updates Casks/daily-log.rb itself.
+# Build a distributable daily_log.app, zip it, render the Homebrew cask, and
+# (with --publish) cut the GitHub release. CI then pushes the rendered cask into
+# elva-labs/homebrew-elva; the cask also rides along as a release asset.
 #
 # Signing is picked automatically:
 #
@@ -18,7 +18,7 @@
 #                   pass Gatekeeper, so the cask still needs `--no-quarantine`.
 #
 # Usage:
-#   Tools/release.sh              build + zip into build/release
+#   Tools/release.sh              build + zip + render the cask into build/release
 #   Tools/release.sh --publish    also create the GitHub release and upload assets
 #
 # Env:
@@ -135,12 +135,15 @@ fi
 echo "==> package"
 ditto -c -k --keepParent "$OUT/$APP" "$ZIP"
 SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
-printf '%s  %s\n' "$SHA" "$(basename "$ZIP")" > "$ZIP.sha256"
+
+sed -e '/^#!/d' -e "s/@VERSION@/$VERSION/g" -e "s/@SHA256@/$SHA/g" \
+	Tools/daily-log.rb.tmpl > "$OUT/daily-log.rb"
 
 echo
 echo "    app     $OUT/$APP"
 echo "    zip     $ZIP"
 echo "    sha256  $SHA"
+echo "    cask    $OUT/daily-log.rb"
 echo "    signed  $([[ $NOTARIZE -eq 1 ]] && echo 'Developer ID + notarized + stapled' || echo 'ad-hoc')"
 echo
 
@@ -148,12 +151,15 @@ if [[ $PUBLISH -eq 1 ]]; then
 	echo "==> publish $TAG"
 	# --target pins the tag to the commit that was actually built. Without it
 	# `gh` tags the default branch, which is only right by coincidence.
-	gh release create "$TAG" "$ZIP" "$ZIP.sha256" \
+	#
+	# The cask rides along as an asset so the tap can be re-synced from the
+	# release without re-running this script.
+	gh release create "$TAG" "$ZIP" "$OUT/daily-log.rb" \
 		--title "$TAG" --generate-notes \
 		--target "$(git rev-parse HEAD)"
 	echo
-	echo "elva-labs/homebrew-elva will pick this up within the hour, or run its"
-	echo "'Update daily-log cask' workflow by hand to pull it immediately."
+	echo "CI pushes $OUT/daily-log.rb into elva-labs/homebrew-elva. Running by"
+	echo "hand? Copy it into that repo's Casks/ and commit."
 else
 	cat <<-EOF
 	Nothing was published. To ship this build:

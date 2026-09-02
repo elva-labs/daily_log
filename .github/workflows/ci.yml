@@ -58,6 +58,10 @@ jobs:
       #   NOTARY_KEY_ID / NOTARY_ISSUER_ID   its key id and issuer id
       HAVE_CERT: ${{ secrets.MACOS_CERTIFICATE != '' }}
       HAVE_NOTARY: ${{ secrets.NOTARY_KEY != '' }}
+      # Fine-grained PAT with Contents:write on elva-labs/homebrew-elva alone —
+      # github.token cannot reach another repo. Without it the release still
+      # ships and the "Tap not configured" step warns.
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
     steps:
       # fetch-depth: 0 so `gh release create --generate-notes` can see history,
       # and so release.sh can pin the tag to this exact commit.
@@ -154,11 +158,48 @@ jobs:
         run: |
           echo "::warning::MACOS_CERTIFICATE / NOTARY_KEY are not both set — the release shipped ad-hoc signed, so users need 'brew install --cask --no-quarantine'. Set MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD, MACOS_SIGN_IDENTITY, NOTARY_KEY, NOTARY_KEY_ID and NOTARY_ISSUER_ID for notarized builds."
 
+      - name: Update Homebrew tap
+        id: tap
+        if: steps.version.outputs.publish == 'true' && env.TAP_TOKEN != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # No `set -x` anywhere below: the token lives in the remote URL.
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/elva-labs/homebrew-elva.git" \
+            tap
+
+          cp build/release/daily-log.rb tap/Casks/daily-log.rb
+          cd tap
+          git add Casks/daily-log.rb
+
+          # Re-running a release with an identical cask should be a no-op rather
+          # than an empty commit.
+          if git diff --cached --quiet; then
+            echo "::notice::Tap already carries this cask — nothing to push."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git -c user.name="elva-bot" -c user.email="gh-bot@elva-group.com" \
+            commit -qm "Update daily-log to $VERSION"
+          git push -q
+          echo "::notice::Pushed daily-log $VERSION to elva-labs/homebrew-elva."
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Tap not configured
+        if: steps.version.outputs.publish == 'true' && env.TAP_TOKEN == ''
+        run: |
+          echo "::warning::TAP_TOKEN is not set — the release shipped, but elva-labs/homebrew-elva still points at the previous version. Copy daily-log.rb from the release assets into Casks/, or set the secret."
+
       - name: Summary
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PUBLISHED: ${{ steps.version.outputs.publish }}
           SIGNED: ${{ steps.version.outputs.publish == 'true' && env.HAVE_CERT == 'true' && env.HAVE_NOTARY == 'true' }}
+          TAP_PUSHED: ${{ steps.tap.outputs.pushed }}
         run: |
           if [[ "$PUBLISHED" == "true" ]]; then
             {
@@ -170,8 +211,14 @@ jobs:
                 echo ":warning: Ad-hoc signed — set the signing secrets for a notarized build."
               fi
               echo
-              echo "\`elva-labs/homebrew-elva\` polls this repo hourly and updates"
-              echo "\`Casks/daily-log.rb\` on its own — no push from here."
+              if [[ "$TAP_PUSHED" == "true" ]]; then
+                echo "\`elva-labs/homebrew-elva\` updated — \`brew upgrade --cask daily-log\` now serves \`$VERSION\`."
+              elif [[ "$TAP_PUSHED" == "false" ]]; then
+                echo "Tap already carried this cask; nothing to push."
+              else
+                echo ":warning: Tap **not** updated. Copy \`daily-log.rb\` from the release"
+                echo "assets into \`elva-labs/homebrew-elva\`, or set \`TAP_TOKEN\`."
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
           else
             {

@@ -117,38 +117,34 @@ those against a built `.app`.
 CI runs the suite on every push and PR, then cuts a release *only* when
 `MARKETING_VERSION` names a version that has no matching release — so ordinary commits
 are silent, and no push can accidentally re-release a version. The build is Developer ID
-signed and notarized, then the zip and its `.sha256` land as release assets.
+signed and notarized; the zip and the rendered cask land as release assets, and the
+cask is pushed to `elva-labs/homebrew-elva`, so the new version is installable with no
+manual step.
 
 ```
 push to main
 ├── always ......................... run tests
-├── MARKETING_VERSION unreleased ... build → sign → notarize → staple → zip → publish v1.1
+├── MARKETING_VERSION unreleased ... build → sign → notarize → staple → zip → publish v1.1 → push cask
 └── already released ............... stop, note it in the job summary
 ```
 
-The cask is **not** pushed from here. [`elva-labs/homebrew-elva`](https://github.com/elva-labs/homebrew-elva)
-polls this repo's releases hourly and rewrites its own `Casks/daily-log.rb` — a pull
-model, so no cross-repo token is involved. `brew upgrade` serves the new version within
-the hour of a release.
+The tap push needs `TAP_TOKEN`: a fine-grained PAT with **Contents: read and write** on
+`elva-labs/homebrew-elva` alone. `github.token` cannot reach another repository, so a
+second credential is unavoidable. Without it the release still ships and CI warns that
+the tap was left behind.
 
 `main` is protected: changes go through a PR, `test` must pass, and force-push and
 deletion are blocked.
 
 <details>
-<summary><strong>Signing secrets</strong> (elva-labs standard names)</summary>
+<summary><strong>Signing secrets</strong> (elva-labs org secrets)</summary>
 
-Set on the repo — Settings → Secrets and variables → Actions. With `MACOS_CERTIFICATE`
-and `NOTARY_KEY` both present the release is signed + notarized; missing either, it
-ships ad-hoc and CI warns.
+All six live as **elva-labs organization secrets**, shared with this repo — no repo-level
+setup. With `MACOS_CERTIFICATE` and `NOTARY_KEY` both present the release is signed +
+notarized; missing either, it ships ad-hoc and CI warns.
 
-| Secret | Value |
-|---|---|
-| `MACOS_CERTIFICATE` | `base64 -i cert.p12` — the Developer ID Application `.p12` (cert **+** private key, exported from Keychain Access) |
-| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
-| `MACOS_SIGN_IDENTITY` | `Developer ID Application: Elva Group AB (WL4K563SDJ)` |
-| `NOTARY_KEY` | `base64 -i AuthKey_XXXX.p8` — an App Store Connect API key ([Integrations → Team Keys](https://appstoreconnect.apple.com/access/integrations/api), **Developer** role) |
-| `NOTARY_KEY_ID` | the key's Key ID |
-| `NOTARY_ISSUER_ID` | the key's Issuer ID |
+`MACOS_CERTIFICATE` · `MACOS_CERTIFICATE_PASSWORD` · `MACOS_SIGN_IDENTITY` ·
+`NOTARY_KEY` · `NOTARY_KEY_ID` · `NOTARY_ISSUER_ID`
 
 The signature is stable across builds, so macOS stops treating an upgrade as a new app
 and re-asking for notification permission.
@@ -159,8 +155,9 @@ and re-asking for notification permission.
 <summary><strong>Running a release by hand</strong></summary>
 
 `Tools/release.sh` is what CI invokes, and works standalone. It builds a Release,
-universal `.app` and zips it into `build/release/`. Add `--publish` to cut the GitHub
-release. `SKIP_TESTS=1` skips the gating test run; `ALLOW_DIRTY=1` builds from a dirty
+universal `.app`, zips it, and renders `build/release/daily-log.rb` from
+`Tools/daily-log.rb.tmpl`. Add `--publish` to cut the GitHub release and upload both
+assets. `SKIP_TESTS=1` skips the gating test run; `ALLOW_DIRTY=1` builds from a dirty
 tree.
 
 Signing is picked from the keychain: with a **Developer ID Application** identity
