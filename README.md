@@ -7,7 +7,7 @@
 **A macOS menu-bar agent that nags you to jot down what you're doing —
 and hands you a readable per-project rollup when Friday's timesheet is due.**
 
-[![Platform](https://img.shields.io/badge/platform-macOS%2026.5%2B-black?logo=apple&logoColor=white)](#build)
+[![Platform](https://img.shields.io/badge/platform-macOS%2026%2B-black?logo=apple&logoColor=white)](#build)
 [![Swift](https://img.shields.io/badge/Swift-AppKit%20%2B%20SwiftUI-F05138?logo=swift&logoColor=white)](#build)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](#build)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -75,7 +75,7 @@ Plain JSON in `~/Library/Application Support/daily/` (overridable in settings):
 
 ## Build
 
-Native AppKit + SwiftUI, no dependencies. Requires **macOS 26.5** and **Xcode 26**.
+Native AppKit + SwiftUI, no dependencies. Runs on **macOS 26+**, built with **Xcode 26**.
 Open `daily_log.xcodeproj` and run — set your own team under Signing & Capabilities
 first, since the checked-in project deliberately has none. The release build gets
 its team and Developer ID identity from `Tools/release.sh`, not the project file.
